@@ -1,7 +1,5 @@
-
 const express = require('express');
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState } = require('@whiskeysockets/baileys');
-const { Boom } = require('@hapi/boom');
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const qrcode = require('qrcode');
 const pino = require('pino');
 
@@ -15,11 +13,14 @@ module.exports = (io) => {
       }
 
       const { state, saveCreds } = await useMultiFileAuthState('/tmp/auth_info');
+      const { version } = await fetchLatestBaileysVersion();
 
       const sock = makeWASocket({
+        version,
         auth: state,
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
+        browser: ['WhatsApp Panel', 'Chrome', '1.0.0'],
       });
 
       sock.ev.on('creds.update', saveCreds);
@@ -34,14 +35,10 @@ module.exports = (io) => {
         }
 
         if (connection === 'close') {
-          const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
           global.waStatus = 'disconnected';
           global.waClient = null;
           global.waGroups = [];
           io.emit('wa_status', { status: 'disconnected', message: 'Bağlantı kesildi' });
-          if (shouldReconnect) {
-            setTimeout(() => {}, 3000);
-          }
         }
 
         if (connection === 'open') {
@@ -53,16 +50,18 @@ module.exports = (io) => {
           setTimeout(async () => {
             try {
               const groups = await sock.groupFetchAllParticipating();
-              global.waGroups = Object.values(groups).map(g => ({
-                id: g.id,
+              const groupList = Object.entries(groups).map(([id, g]) => ({
+                id: id,
                 name: g.subject,
                 participants: g.participants?.length || 0
               }));
+              global.waGroups = groupList;
+              console.log('Gruplar yüklendi:', groupList.length);
               io.emit('groups_loaded', global.waGroups);
             } catch(e) {
               console.log('Grup yükleme hatası:', e.message);
             }
-          }, 5000);
+          }, 8000);
         }
       });
 

@@ -1,3 +1,4 @@
+
 const express = require('express');
 const { Client, RemoteAuth } = require('whatsapp-web.js');
 const { MongoStore } = require('wwebjs-mongo');
@@ -76,8 +77,10 @@ module.exports = (io) => {
       if (!global.waClient || global.waStatus !== 'connected') {
         return res.status(400).json({ error: 'WhatsApp bağlı değil' });
       }
-      await new Promise(r => setTimeout(r, 3000));
-      const chats = await global.waClient.getChats();
+      const chats = await Promise.race([
+        global.waClient.getChats(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 60000))
+      ]);
       const groups = chats
         .filter(c => c.isGroup)
         .map(g => ({ id: g.id._serialized, name: g.name, participants: g.participants?.length || 0 }));

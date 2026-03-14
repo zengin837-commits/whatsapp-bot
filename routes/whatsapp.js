@@ -17,7 +17,7 @@ module.exports = (io) => {
       const client = new Client({
         authStrategy: new LocalAuth(),
         puppeteer: {
-          executablePath: 'C:\\Users\\mehme\\.cache\\puppeteer\\chrome\\win64-121.0.6167.85\\chrome-win64\\chrome.exe',
+          executablePath: '/usr/bin/chromium-browser',
           args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
           headless: true,
           protocolTimeout: 60000

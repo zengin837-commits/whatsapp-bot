@@ -46,23 +46,16 @@ module.exports = (io) => {
           global.waStatus = 'connected';
           global.waGroups = [];
           io.emit('wa_status', { status: 'connected', message: 'WhatsApp bağlandı! ✅' });
-
-          setTimeout(async () => {
-            try {
-              const groups = await sock.groupFetchAllParticipating();
-              const groupList = Object.entries(groups).map(([id, g]) => ({
-                id: id,
-                name: g.subject,
-                participants: g.participants?.length || 0
-              }));
-              global.waGroups = groupList;
-              console.log('Gruplar yüklendi:', groupList.length);
-              io.emit('groups_loaded', global.waGroups);
-            } catch(e) {
-              console.log('Grup yükleme hatası:', e.message);
-            }
-          }, 8000);
+          console.log('WhatsApp bağlandı, gruplar bekleniyor...');
         }
+      });
+
+      sock.ev.on('groups.update', (updates) => {
+        console.log('Grup güncellemesi:', updates.length);
+      });
+
+      sock.ev.on('group-participants.update', (update) => {
+        console.log('Grup katılımcı güncellemesi');
       });
 
       global.waStatus = 'connecting';
@@ -77,13 +70,23 @@ module.exports = (io) => {
     res.json({ status: global.waStatus || 'disconnected' });
   });
 
-  router.get('/groups', (req, res) => {
+  router.get('/groups', async (req, res) => {
     try {
       if (!global.waClient || global.waStatus !== 'connected') {
         return res.status(400).json({ error: 'WhatsApp bağlı değil' });
       }
-      res.json(global.waGroups || []);
+      console.log('Gruplar çekiliyor...');
+      const groups = await global.waClient.groupFetchAllParticipating();
+      console.log('Ham grup sayısı:', Object.keys(groups).length);
+      const groupList = Object.entries(groups).map(([id, g]) => ({
+        id: id,
+        name: g.subject,
+        participants: g.participants?.length || 0
+      }));
+      console.log('Gruplar:', groupList.length);
+      res.json(groupList);
     } catch (err) {
+      console.log('Grup hatası:', err.message);
       res.status(500).json({ error: err.message });
     }
   });

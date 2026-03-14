@@ -1,5 +1,7 @@
 const express = require('express');
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, RemoteAuth } = require('whatsapp-web.js');
+const { MongoStore } = require('wwebjs-mongo');
+const mongoose = require('mongoose');
 const qrcode = require('qrcode');
 
 module.exports = (io) => {
@@ -15,9 +17,12 @@ module.exports = (io) => {
         global.waClient = null;
       }
       const client = new Client({
-        authStrategy: new LocalAuth(),
+        authStrategy: new RemoteAuth({
+          store: new MongoStore({ mongoose }),
+          backupSyncIntervalMs: 300000
+        }),
         puppeteer: {
-          executablePath: '/usr/bin/chromium-browser',
+          executablePath: '/usr/bin/chromium',
           args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
           headless: true,
           protocolTimeout: 60000
@@ -71,6 +76,7 @@ module.exports = (io) => {
       if (!global.waClient || global.waStatus !== 'connected') {
         return res.status(400).json({ error: 'WhatsApp bağlı değil' });
       }
+      await new Promise(r => setTimeout(r, 3000));
       const chats = await global.waClient.getChats();
       const groups = chats
         .filter(c => c.isGroup)

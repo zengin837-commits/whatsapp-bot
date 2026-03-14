@@ -25,7 +25,7 @@ module.exports = (io) => {
           executablePath: '/usr/bin/chromium',
           args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
           headless: true,
-          protocolTimeout: 60000
+          protocolTimeout: 120000
         }
       });
 

@@ -3,6 +3,7 @@ RUN apk add --no-cache chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 WORKDIR /app
+RUN rm -rf .wwebjs_auth
 COPY package*.json ./
 RUN npm install
 COPY . .

@@ -39,7 +39,20 @@ module.exports = (io) => {
       client.on('ready', async () => {
         global.waClient = client;
         global.waStatus = 'connected';
+        global.waGroups = [];
         io.emit('wa_status', { status: 'connected', message: 'WhatsApp bağlandı! ✅' });
+
+        setTimeout(async () => {
+          try {
+            const chats = await client.getChats();
+            global.waGroups = chats
+              .filter(c => c.isGroup)
+              .map(g => ({ id: g.id._serialized, name: g.name, participants: g.participants?.length || 0 }));
+            io.emit('groups_loaded', global.waGroups);
+          } catch(e) {
+            console.log('Grup yükleme hatası:', e.message);
+          }
+        }, 10000);
       });
 
       client.on('auth_failure', () => {
@@ -77,14 +90,7 @@ module.exports = (io) => {
       if (!global.waClient || global.waStatus !== 'connected') {
         return res.status(400).json({ error: 'WhatsApp bağlı değil' });
       }
-      const chats = await Promise.race([
-        global.waClient.getChats(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 60000))
-      ]);
-      const groups = chats
-        .filter(c => c.isGroup)
-        .map(g => ({ id: g.id._serialized, name: g.name, participants: g.participants?.length || 0 }));
-      res.json(groups);
+      res.json(global.waGroups || []);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
@@ -124,6 +130,7 @@ module.exports = (io) => {
         await global.waClient.destroy();
         global.waClient = null;
         global.waStatus = 'disconnected';
+        global.waGroups = [];
       }
       res.json({ success: true });
     } catch (err) {

@@ -1,7 +1,9 @@
+routes/whatsapp.js tam hali:
 const express = require('express');
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const { Client, RemoteAuth } = require('whatsapp-web.js');
+const { MongoStore } = require('wwebjs-mongo');
+const mongoose = require('mongoose');
 const qrcode = require('qrcode');
-const pino = require('pino');
 
 module.exports = (io) => {
   const router = express.Router();
@@ -11,51 +13,78 @@ module.exports = (io) => {
       if (global.waClient && global.waStatus === 'connected') {
         return res.json({ status: global.waStatus });
       }
+      if (global.waClient) {
+        try { await global.waClient.destroy(); } catch (e) {}
+        global.waClient = null;
+      }
 
-      const { state, saveCreds } = await useMultiFileAuthState('/tmp/auth_info');
-      const { version } = await fetchLatestBaileysVersion();
-
-      const sock = makeWASocket({
-        version,
-        auth: state,
-        printQRInTerminal: false,
-        logger: pino({ level: 'silent' }),
-        browser: ['WhatsApp Panel', 'Chrome', '1.0.0'],
-      });
-
-      sock.ev.on('creds.update', saveCreds);
-
-      sock.ev.on('connection.update', async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-          const qrImage = await qrcode.toDataURL(qr);
-          global.waStatus = 'qr';
-          io.emit('qr', qrImage);
-        }
-
-        if (connection === 'close') {
-          global.waStatus = 'disconnected';
-          global.waClient = null;
-          global.waGroups = [];
-          io.emit('wa_status', { status: 'disconnected', message: 'Bağlantı kesildi' });
-        }
-
-        if (connection === 'open') {
-          global.waClient = sock;
-          global.waStatus = 'connected';
-          global.waGroups = [];
-          io.emit('wa_status', { status: 'connected', message: 'WhatsApp bağlandı! ✅' });
-          console.log('WhatsApp bağlandı, gruplar bekleniyor...');
+      const client = new Client({
+        authStrategy: new RemoteAuth({
+          store: new MongoStore({ mongoose }),
+          backupSyncIntervalMs: 300000
+        }),
+        puppeteer: {
+          executablePath: '/usr/bin/chromium',
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-extensions'
+          ],
+          headless: true,
+          protocolTimeout: 800000
         }
       });
 
-      sock.ev.on('groups.update', (updates) => {
-        console.log('Grup güncellemesi:', updates.length);
+      client.on('qr', async (qr) => {
+        const qrImage = await qrcode.toDataURL(qr);
+        global.waStatus = 'qr';
+        io.emit('qr', qrImage);
       });
 
-      sock.ev.on('group-participants.update', (update) => {
-        console.log('Grup katılımcı güncellemesi');
+      client.on('ready', async () => {
+        global.waClient = client;
+        global.waStatus = 'connected';
+        global.waGroups = [];
+        io.emit('wa_status', { status: 'connected', message: 'WhatsApp bağlandı! ✅' });
+        console.log('WhatsApp bağlandı, gruplar yükleniyor...');
+
+        setTimeout(async () => {
+          try {
+            const chats = await client.getChats();
+            global.waGroups = chats
+              .filter(c => c.isGroup)
+              .map(g => ({ id: g.id._serialized, name: g.name, participants: g.participants?.length || 0 }));
+            console.log('Gruplar yüklendi:', global.waGroups.length);
+            io.emit('groups_loaded', global.waGroups);
+          } catch(e) {
+            console.log('Grup yükleme hatası:', e.message);
+          }
+        }, 15000);
+      });
+
+      client.on('auth_failure', () => {
+        global.waStatus = 'disconnected';
+        global.waClient = null;
+        io.emit('wa_status', { status: 'disconnected', message: 'Hata, tekrar deneyin' });
+      });
+
+      client.on('disconnected', () => {
+        global.waStatus = 'disconnected';
+        global.waClient = null;
+        io.emit('wa_status', { status: 'disconnected', message: 'Bağlantı kesildi' });
+      });
+
+      client.initialize().catch(err => {
+        console.log('Initialize hatası:', err.message);
+        global.waStatus = 'disconnected';
+        global.waClient = null;
+        io.emit('wa_status', { status: 'disconnected', message: 'Bağlantı başlatılamadı' });
       });
 
       global.waStatus = 'connecting';
@@ -70,23 +99,13 @@ module.exports = (io) => {
     res.json({ status: global.waStatus || 'disconnected' });
   });
 
-  router.get('/groups', async (req, res) => {
+  router.get('/groups', (req, res) => {
     try {
       if (!global.waClient || global.waStatus !== 'connected') {
         return res.status(400).json({ error: 'WhatsApp bağlı değil' });
       }
-      console.log('Gruplar çekiliyor...');
-      const groups = await global.waClient.groupFetchAllParticipating();
-      console.log('Ham grup sayısı:', Object.keys(groups).length);
-      const groupList = Object.entries(groups).map(([id, g]) => ({
-        id: id,
-        name: g.subject,
-        participants: g.participants?.length || 0
-      }));
-      console.log('Gruplar:', groupList.length);
-      res.json(groupList);
+      res.json(global.waGroups || []);
     } catch (err) {
-      console.log('Grup hatası:', err.message);
       res.status(500).json({ error: err.message });
     }
   });
@@ -104,7 +123,7 @@ module.exports = (io) => {
       io.emit('sending_start', { total: groupIds.length });
       for (let i = 0; i < groupIds.length; i++) {
         try {
-          await global.waClient.sendMessage(groupIds[i], { text: message });
+          await global.waClient.sendMessage(groupIds[i], message);
           sent++;
           io.emit('sending_progress', { sent, failed, total: groupIds.length, current: i + 1 });
           await new Promise(r => setTimeout(r, 1500));
@@ -122,7 +141,7 @@ module.exports = (io) => {
   router.post('/disconnect', async (req, res) => {
     try {
       if (global.waClient) {
-        await global.waClient.logout();
+        await global.waClient.destroy();
         global.waClient = null;
         global.waStatus = 'disconnected';
         global.waGroups = [];
@@ -135,3 +154,4 @@ module.exports = (io) => {
 
   return router;
 };
+Commit et, sonra Dockerfile'ı göndereyim. 👆

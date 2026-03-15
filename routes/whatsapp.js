@@ -7,100 +7,6 @@ const qrcode = require('qrcode');
 module.exports = (io) => {
   const router = express.Router();
 
-  let client = null;
-
-  const createClient = () => {
-    return new Client({
-      authStrategy: new RemoteAuth({
-        store: new MongoStore({ mongoose }),
-        backupSyncIntervalMs: 300000
-      }),
-      puppeteer: {
-        executablePath: '/usr/bin/chromium',
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-gpu',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
-          '--disable-extensions'
-        ],
-        headless: true,
-        protocolTimeout: 800000
-      }
-    });
-  };
-
-  const setupEvents = (client, phone = null) => {
-    let pairingCodeRequested = false;
-
-    client.on('qr', async (qr) => {
-      if (phone) {
-        if (pairingCodeRequested) return;
-        pairingCodeRequested = true;
-        try {
-          const code = await client.requestPairingCode(phone);
-          global.waStatus = 'pairing';
-          io.emit('pairing_code', { code });
-          console.log('Pairing kodu alindi:', code);
-        } catch (e) {
-          pairingCodeRequested = false;
-          console.log('Pairing code hatasi:', e.message);
-          io.emit('wa_status', { status: 'disconnected', message: 'Kod alinamadi: ' + e.message });
-        }
-      } else {
-        const qrImage = await qrcode.toDataURL(qr);
-        global.waStatus = 'qr';
-        io.emit('qr', qrImage);
-      }
-    });
-
-    client.on('ready', async () => {
-      global.waClient = client;
-      global.waStatus = 'connected';
-      global.waGroups = [];
-      io.emit('wa_status', { status: 'connected', message: 'WhatsApp baglandi!' });
-      console.log('WhatsApp baglandi');
-
-      const loadGroups = async (attempt = 1) => {
-        try {
-          console.log(`Gruplar yukleniyor... (deneme ${attempt})`);
-          const chats = await client.getChats();
-          global.waGroups = chats
-            .filter(c => c.isGroup)
-            .map(g => ({ id: g.id._serialized, name: g.name, participants: g.participants ? g.participants.length : 0 }));
-          console.log('Gruplar yuklendi:', global.waGroups.length);
-          io.emit('groups_loaded', global.waGroups);
-        } catch(e) {
-          console.log('Grup yukleme hatasi:', e.message);
-          if (attempt < 3) {
-            console.log('30 saniye sonra tekrar denenecek...');
-            setTimeout(() => loadGroups(attempt + 1), 30000);
-          } else {
-            io.emit('wa_status', { status: 'connected', message: 'Gruplar yuklenemedi, sayfayi yenileyin' });
-          }
-        }
-      };
-
-      setTimeout(() => loadGroups(), 20000);
-    });
-
-    client.on('auth_failure', () => {
-      global.waStatus = 'disconnected';
-      global.waClient = null;
-      io.emit('wa_status', { status: 'disconnected', message: 'Hata, tekrar deneyin' });
-    });
-
-    client.on('disconnected', () => {
-      global.waStatus = 'disconnected';
-      global.waClient = null;
-      io.emit('wa_status', { status: 'disconnected', message: 'Baglanti kesildi' });
-    });
-  };
-
   router.post('/connect', async (req, res) => {
     try {
       if (global.waClient && global.waStatus === 'connected') {
@@ -111,8 +17,74 @@ module.exports = (io) => {
         global.waClient = null;
       }
 
-      client = createClient();
-      setupEvents(client);
+      const client = new Client({
+        authStrategy: new RemoteAuth({
+          store: new MongoStore({ mongoose }),
+          backupSyncIntervalMs: 300000
+        }),
+        puppeteer: {
+          executablePath: '/usr/bin/chromium',
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-gpu',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-extensions'
+          ],
+          headless: true,
+          protocolTimeout: 800000
+        }
+      });
+
+      client.on('qr', async (qr) => {
+        const qrImage = await qrcode.toDataURL(qr);
+        global.waStatus = 'qr';
+        io.emit('qr', qrImage);
+      });
+
+      client.on('ready', async () => {
+        global.waClient = client;
+        global.waStatus = 'connected';
+        global.waGroups = [];
+        io.emit('wa_status', { status: 'connected', message: 'WhatsApp baglandi!' });
+        console.log('WhatsApp baglandi');
+
+        const loadGroups = async (attempt) => {
+          try {
+            console.log('Gruplar yukleniyor... (deneme ' + attempt + ')');
+            const chats = await client.getChats();
+            global.waGroups = chats
+              .filter(c => c.isGroup)
+              .map(g => ({ id: g.id._serialized, name: g.name, participants: g.participants ? g.participants.length : 0 }));
+            console.log('Gruplar yuklendi:', global.waGroups.length);
+            io.emit('groups_loaded', global.waGroups);
+          } catch(e) {
+            console.log('Grup yukleme hatasi:', e.message);
+            if (attempt < 5) {
+              console.log('30 saniye sonra tekrar denenecek...');
+              setTimeout(() => loadGroups(attempt + 1), 30000);
+            }
+          }
+        };
+
+        setTimeout(() => loadGroups(1), 10000);
+      });
+
+      client.on('auth_failure', () => {
+        global.waStatus = 'disconnected';
+        global.waClient = null;
+        io.emit('wa_status', { status: 'disconnected', message: 'Hata, tekrar deneyin' });
+      });
+
+      client.on('disconnected', () => {
+        global.waStatus = 'disconnected';
+        global.waClient = null;
+        io.emit('wa_status', { status: 'disconnected', message: 'Baglanti kesildi' });
+      });
 
       client.initialize().catch(err => {
         console.log('Initialize hatasi:', err.message);
@@ -123,37 +95,6 @@ module.exports = (io) => {
 
       global.waStatus = 'connecting';
       res.json({ status: 'connecting' });
-
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  router.post('/connect-phone', async (req, res) => {
-    try {
-      const { phone } = req.body;
-      if (!phone) return res.status(400).json({ error: 'Telefon numarasi gerekli' });
-
-      if (global.waClient && global.waStatus === 'connected') {
-        return res.json({ status: global.waStatus });
-      }
-      if (global.waClient) {
-        try { await global.waClient.destroy(); } catch (e) {}
-        global.waClient = null;
-      }
-
-      client = createClient();
-      setupEvents(client, phone);
-
-      client.initialize().catch(err => {
-        console.log('Initialize hatasi:', err.message);
-        global.waStatus = 'disconnected';
-        global.waClient = null;
-        io.emit('wa_status', { status: 'disconnected', message: 'Baglanti baslatılamadi' });
-      });
-
-      global.waStatus = 'connecting';
-      res.json({ status: 'connecting', message: 'Baglaniyor, kod bekleniyor...' });
 
     } catch (err) {
       res.status(500).json({ error: err.message });

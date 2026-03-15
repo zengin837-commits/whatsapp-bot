@@ -35,14 +35,19 @@ module.exports = (io) => {
   };
 
   const setupEvents = (client, phone = null) => {
+    let pairingCodeRequested = false;
+
     client.on('qr', async (qr) => {
       if (phone) {
+        if (pairingCodeRequested) return;
+        pairingCodeRequested = true;
         try {
           const code = await client.requestPairingCode(phone);
           global.waStatus = 'pairing';
           io.emit('pairing_code', { code });
           console.log('Pairing kodu alindi:', code);
         } catch (e) {
+          pairingCodeRequested = false;
           console.log('Pairing code hatasi:', e.message);
           io.emit('wa_status', { status: 'disconnected', message: 'Kod alinamadi: ' + e.message });
         }

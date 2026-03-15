@@ -1,4 +1,3 @@
-
 const express = require('express');
 const { Client, RemoteAuth } = require('whatsapp-web.js');
 const { MongoStore } = require('wwebjs-mongo');
@@ -35,11 +34,23 @@ module.exports = (io) => {
     });
   };
 
-  const setupEvents = (client) => {
+  const setupEvents = (client, phone = null) => {
     client.on('qr', async (qr) => {
-      const qrImage = await qrcode.toDataURL(qr);
-      global.waStatus = 'qr';
-      io.emit('qr', qrImage);
+      if (phone) {
+        try {
+          const code = await client.requestPairingCode(phone);
+          global.waStatus = 'pairing';
+          io.emit('pairing_code', { code });
+          console.log('Pairing kodu alindi:', code);
+        } catch (e) {
+          console.log('Pairing code hatasi:', e.message);
+          io.emit('wa_status', { status: 'disconnected', message: 'Kod alinamadi: ' + e.message });
+        }
+      } else {
+        const qrImage = await qrcode.toDataURL(qr);
+        global.waStatus = 'qr';
+        io.emit('qr', qrImage);
+      }
     });
 
     client.on('ready', async () => {
@@ -118,28 +129,17 @@ module.exports = (io) => {
       }
 
       client = createClient();
-      setupEvents(client);
+      setupEvents(client, phone);
 
       client.initialize().catch(err => {
         console.log('Initialize hatasi:', err.message);
         global.waStatus = 'disconnected';
         global.waClient = null;
+        io.emit('wa_status', { status: 'disconnected', message: 'Baglanti baslatılamadi' });
       });
 
-      // Telefon numarası ile kod al
-      setTimeout(async () => {
-        try {
-          const code = await client.requestPairingCode(phone);
-          io.emit('pairing_code', { code });
-          console.log('Pairing code:', code);
-        } catch(e) {
-          console.log('Pairing code hatasi:', e.message);
-          io.emit('pairing_error', { error: e.message });
-        }
-      }, 3000);
-
       global.waStatus = 'connecting';
-      res.json({ status: 'connecting' });
+      res.json({ status: 'connecting', message: 'Baglaniyor, kod bekleniyor...' });
 
     } catch (err) {
       res.status(500).json({ error: err.message });

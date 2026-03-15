@@ -293,8 +293,7 @@ function switchConnectTab(tab) {
 
 async function connectWhatsApp() {
   document.getElementById('qrModal').classList.add('open');
-  document.getElementById('qrContainer').innerHTML = '<div class="qr-loading">QR 
-Kod Olusturuluyor...</div>';
+  document.getElementById('qrContainer').innerHTML = '<div class="qr-loading">QR Kod Olusturuluyor...</div>';
   try {
     await fetch('/api/whatsapp/connect', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
   } catch (e) { showToast('Baglanti hatasi'); }

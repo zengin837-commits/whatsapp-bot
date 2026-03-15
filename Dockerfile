@@ -15,4 +15,4 @@ COPY package*.json ./
 RUN npm install
 COPY . .
 EXPOSE 8080
-CMD ["node", "server.js"]
+CMD ["node", "--max-old-space-size=512

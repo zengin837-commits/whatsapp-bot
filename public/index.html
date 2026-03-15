@@ -180,13 +180,13 @@ textarea.input-field { resize: vertical; min-height: 120px; line-height: 1.6; }
         <div class="input-group"><textarea class="input-field" id="messageText" placeholder="Mesajinizi buraya yazin..."></textarea></div>
       </div>
       <div class="send-card">
-        <h3>👥 Gruplar</h3>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h3>👥 Gruplar <button class="select-all-btn" onclick="loadGroups()" style="margin-left:12px;margin-bottom:0">🔄 Gruplari Yukle</button></h3>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;margin-top:12px">
           <button class="select-all-btn" onclick="selectAll()">Tumunu Sec</button>
           <span style="font-size:13px;color:var(--muted)" id="selectedCount">0 grup secildi</span>
         </div>
         <div class="groups-grid" id="groupsGrid">
-          <div style="color:var(--muted);font-size:14px;grid-column:1/-1;text-align:center;padding:32px">WhatsApp baglantiktan sonra gruplar gorunecek...</div>
+          <div style="color:var(--muted);font-size:14px;grid-column:1/-1;text-align:center;padding:32px">Gruplari Yukle butonuna basin...</div>
         </div>
       </div>
       <div class="send-card" id="progressCard" style="display:none">
@@ -207,7 +207,6 @@ textarea.input-field { resize: vertical; min-height: 120px; line-height: 1.6; }
   </div>
 </div>
 
-<!-- QR MODAL -->
 <div class="modal-overlay" id="qrModal">
   <div class="modal">
     <h3>📱 QR Kod ile Baglan</h3>
@@ -280,7 +279,6 @@ function showPage(page, e) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + page).classList.add('active');
   if (e && e.currentTarget) e.currentTarget.classList.add('active');
-  if (page === 'send' && groups.length === 0) loadGroups();
   if (page === 'history') loadHistory();
 }
 
@@ -295,194 +293,4 @@ async function connectWhatsApp() {
   document.getElementById('qrModal').classList.add('open');
   document.getElementById('qrContainer').innerHTML = '<div class="qr-loading">QR Kod Olusturuluyor...</div>';
   try {
-    await fetch('/api/whatsapp/connect', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
-  } catch (e) { showToast('Baglanti hatasi'); }
-}
-
-async function connectPhone() {
-  const phone = document.getElementById('phoneInput').value.trim();
-  if (!phone) return showToast('Telefon numarasi girin');
-  try {
-    await fetch('/api/whatsapp/connect-phone', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ phone })
-    });
-    showToast('Kod gonderiliyor...');
-  } catch(e) { showToast('Hata olustu'); }
-}
-
-async function disconnectWhatsApp() {
-  await fetch('/api/whatsapp/disconnect', { method: 'POST' });
-  showToast('Baglanti kesildi');
-}
-
-function closeQrModal() { document.getElementById('qrModal').classList.remove('open'); }
-
-async function checkWaStatus() {
-  try {
-    const res = await fetch('/api/whatsapp/status');
-    const data = await res.json();
-    updateWaStatus(data.status);
-  } catch (e) {}
-}
-
-function updateWaStatus(status) {
-  const dot = document.getElementById('statusDot');
-  const text = document.getElementById('statusText');
-  const statWa = document.getElementById('statWa');
-  const connectBtn = document.getElementById('connectBtn');
-  const disconnectBtn = document.getElementById('disconnectBtn');
-  if (status === 'connected') {
-    dot.classList.remove('red');
-    text.textContent = 'Bagli';
-    statWa.textContent = 'Bagli';
-    statWa.style.color = 'var(--green)';
-    if (connectBtn) connectBtn.style.display = 'none';
-    if (disconnectBtn) disconnectBtn.style.display = 'flex';
-    loadGroups();
-  } else {
-    dot.classList.add('red');
-    text.textContent = 'Bagli Degil';
-    statWa.textContent = 'Bagli Degil';
-    statWa.style.color = 'var(--red)';
-    if (connectBtn) connectBtn.style.display = 'flex';
-    if (disconnectBtn) disconnectBtn.style.display = 'none';
-  }
-}
-
-async function loadGroups() {
-  try {
-    const res = await fetch('/api/whatsapp/groups');
-    const data = await res.json();
-    if (Array.isArray(data)) {
-      groups = data;
-      document.getElementById('statGroups').textContent = groups.length;
-      renderGroups();
-    }
-  } catch (e) {}
-}
-
-function renderGroups() {
-  const grid = document.getElementById('groupsGrid');
-  if (groups.length === 0) {
-    grid.innerHTML = '<div style="color:var(--muted);font-size:14px;grid-column:1/-1;text-align:center;padding:32px">Grup bulunamadi</div>';
-    return;
-  }
-  grid.innerHTML = groups.map(g => `
-    <div class="group-item" onclick="toggleGroup('${g.id}')" id="g-${g.id.replace(/[^a-z0-9]/gi,'_')}">
-      <div class="group-check">✓</div>
-      <div><div class="group-name">${g.name}</div><div class="group-count">${g.participants} kisi</div></div>
-    </div>
-  `).join('');
-}
-
-function toggleGroup(id) {
-  const idx = selectedGroups.indexOf(id);
-  if (idx === -1) selectedGroups.push(id);
-  else selectedGroups.splice(idx, 1);
-  document.querySelectorAll('.group-item').forEach(el => {
-    const gid = groups.find(g => el.id === 'g-' + g.id.replace(/[^a-z0-9]/gi,'_'));
-    if (gid) el.classList.toggle('selected', selectedGroups.includes(gid.id));
-  });
-  document.getElementById('selectedCount').textContent = selectedGroups.length + ' grup secildi';
-}
-
-function selectAll() {
-  if (selectedGroups.length === groups.length) {
-    selectedGroups = [];
-    document.querySelectorAll('.group-item').forEach(el => el.classList.remove('selected'));
-  } else {
-    selectedGroups = groups.map(g => g.id);
-    document.querySelectorAll('.group-item').forEach(el => el.classList.add('selected'));
-  }
-  document.getElementById('selectedCount').textContent = selectedGroups.length + ' grup secildi';
-}
-
-async function sendMessages() {
-  const message = document.getElementById('messageText').value.trim();
-  if (!message) return showToast('Mesaj yazin');
-  if (selectedGroups.length === 0) return showToast('Grup secin');
-  document.getElementById('sendBtn').disabled = true;
-  document.getElementById('progressCard').style.display = 'block';
-  try {
-    await fetch('/api/whatsapp/send', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ message, groupIds: selectedGroups })
-    });
-  } catch (e) { showToast('Hata'); }
-}
-
-async function loadHistory() {
-  try {
-    const res = await fetch('/api/messages', { headers: { 'Authorization': 'Bearer ' + token } });
-    const data = await res.json();
-    const list = document.getElementById('historyList');
-    if (!data.length) {
-      list.innerHTML = '<div style="color:var(--muted);text-align:center;padding:48px"><div style="font-size:48px;margin-bottom:12px">📭</div>Henuz mesaj gonderilmedi.</div>';
-      return;
-    }
-    list.innerHTML = data.map(m => `
-      <div class="history-item">
-        <div class="history-header"><span class="history-time">${new Date(m.createdAt).toLocaleString('tr-TR')}</span></div>
-        <div class="history-msg">${m.message}</div>
-        <div class="history-meta"><span class="badge-sent">✓ ${m.sent} gonderildi</span><span class="badge-failed">✗ ${m.failed} basarisiz</span></div>
-      </div>
-    `).join('');
-  } catch (e) {}
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-
-socket.on('qr', (qrImage) => {
-  document.getElementById('qrContainer').innerHTML = '<img src="' + qrImage + '" style="width:220px;height:220px;border-radius:12px;background:#fff;padding:8px">';
-});
-
-socket.on('wa_status', (data) => {
-  updateWaStatus(data.status);
-  if (data.status === 'connected') closeQrModal();
-  showToast(data.message);
-});
-
-socket.on('groups_loaded', (groupList) => {
-  groups = groupList;
-  document.getElementById('statGroups').textContent = groups.length;
-  renderGroups();
-});
-
-socket.on('pairing_code', (data) => {
-  document.getElementById('pairingCodeBox').style.display = 'block';
-  document.getElementById('pairingCode').textContent = data.code;
-});
-
-socket.on('sending_start', () => {
-  document.getElementById('progressCard').style.display = 'block';
-  document.getElementById('progressText').textContent = 'Hazirlaniyor...';
-});
-
-socket.on('sending_progress', (data) => {
-  const pct = Math.round((data.current / data.total) * 100);
-  document.getElementById('progressFill').style.width = pct + '%';
-  document.getElementById('progressText').textContent = data.current + '/' + data.total + ' gonderildi';
-});
-
-socket.on('sending_done', (data) => {
-  document.getElementById('sendBtn').disabled = false;
-  showToast(data.sent + ' mesaj gonderildi!');
-  loadHistory();
-});
-
-if (token) {
-  fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } })
-    .then(r => r.json())
-    .then(data => { if (data._id) showPanel(); else localStorage.removeItem('wa_token'); })
-    .catch(() => {});
-}
-</script>
-</body>
-</html>
+    await fetch('/api/whatsapp/connect', { met

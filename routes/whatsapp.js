@@ -3,148 +3,127 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 
 module.exports = (io) => {
+
   const router = express.Router();
 
-  // Varsayılan durumlar
   global.waClient = global.waClient || null;
-  global.waStatus = global.waStatus || 'disconnected';
-  global.waGroups = global.waGroups || [];
+  global.waStatus = global.waStatus || "disconnected";
 
-  const loadGroups = async (client, attempt = 1) => {
-    try {
-      console.log(`Gruplar yukleniyor... (deneme ${attempt})`);
+  // CLIENT OLUŞTUR
+  const createClient = () => {
 
-      const chats = await client.getChats();
-      const groups = chats.filter(c => c.isGroup);
+    const client = new Client({
 
-      global.waGroups = groups.map(g => ({
-        id: g.id._serialized,
-        name: g.name || 'Grup',
-        participants: g.participants ? g.participants.length : 0
-      }));
+      authStrategy: new LocalAuth(),
 
-      console.log("Gruplar yuklendi:", global.waGroups.length);
+      puppeteer: {
 
-      io.emit('groups_loaded', global.waGroups);
+        executablePath:
+          process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium-browser",
 
-    } catch (e) {
-      console.log("Grup yukleme hatasi:", e.message);
+        headless: true,
 
-      if (attempt < 5) {
-        setTimeout(() => loadGroups(client, attempt + 1), 20000);
+        protocolTimeout: 600000,
+
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--disable-extensions",
+          "--disable-background-networking"
+        ]
       }
-    }
+    });
+
+    client.on("qr", async (qr) => {
+
+      console.log("QR kod oluşturuldu");
+
+      const qrImage = await qrcode.toDataURL(qr);
+
+      global.waStatus = "qr";
+
+      io.emit("qr", qrImage);
+
+    });
+
+    client.on("ready", () => {
+
+      console.log("WhatsApp bağlandı");
+
+      global.waClient = client;
+      global.waStatus = "connected";
+
+      io.emit("wa_status", {
+        status: "connected",
+        message: "WhatsApp bağlandı"
+      });
+
+    });
+
+    client.on("disconnected", () => {
+
+      console.log("WhatsApp bağlantısı kesildi");
+
+      global.waClient = null;
+      global.waStatus = "disconnected";
+
+      io.emit("wa_status", {
+        status: "disconnected",
+        message: "Bağlantı kesildi"
+      });
+
+    });
+
+    client.on("auth_failure", () => {
+
+      console.log("Auth hatası");
+
+      global.waClient = null;
+      global.waStatus = "disconnected";
+
+    });
+
+    return client;
   };
 
-  // WHATSAPP BAGLAN
-  router.post('/connect', async (req, res) => {
+  // WHATSAPP CONNECT
+  router.post("/connect", async (req, res) => {
+
     try {
 
-      if (global.waClient && global.waStatus === 'connected') {
-        return res.json({ status: global.waStatus });
+      if (global.waClient && global.waStatus === "connected") {
+        return res.json({ status: "connected" });
       }
 
       if (global.waClient) {
         try { await global.waClient.destroy(); } catch (e) {}
-        global.waClient = null;
       }
 
-      const client = new Client({
-        authStrategy: new LocalAuth(),
+      const client = createClient();
 
-        puppeteer: {
-          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
-
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-gpu',
-            '--disable-dev-shm-usage'
-          ],
-
-          headless: true,
-          protocolTimeout: 300000
-        }
-      });
-
-      client.on('qr', async (qr) => {
-
-        console.log("QR kod olustu");
-
-        const qrImage = await qrcode.toDataURL(qr);
-
-        global.waStatus = "qr";
-
-        io.emit('qr', qrImage);
-
-      });
-
-      client.on('ready', async () => {
-
-        console.log("WhatsApp baglandi");
-
-        global.waClient = client;
-        global.waStatus = "connected";
-
-        io.emit('wa_status', {
-          status: 'connected',
-          message: 'WhatsApp baglandi'
-        });
-
-        setTimeout(() => {
-          loadGroups(client);
-        }, 10000);
-
-      });
-
-      client.on('auth_failure', () => {
-
-        console.log("Auth hatasi");
-
-        global.waStatus = "disconnected";
-        global.waClient = null;
-
-        io.emit('wa_status', {
-          status: 'disconnected',
-          message: 'Kimlik dogrulama hatasi'
-        });
-
-      });
-
-      client.on('disconnected', () => {
-
-        console.log("WhatsApp baglantisi kesildi");
-
-        global.waStatus = "disconnected";
-        global.waClient = null;
-        global.waGroups = [];
-
-        io.emit('wa_status', {
-          status: 'disconnected',
-          message: 'Baglanti kesildi'
-        });
-
-      });
+      global.waClient = client;
+      global.waStatus = "connecting";
 
       await client.initialize();
-
-      global.waStatus = "connecting";
 
       res.json({ status: "connecting" });
 
     } catch (err) {
 
-      console.log("Baglanti hatasi:", err.message);
+      console.log("Bağlantı hatası:", err.message);
 
       res.status(500).json({
         error: err.message
       });
 
     }
+
   });
 
   // STATUS
-  router.get('/status', (req, res) => {
+  router.get("/status", (req, res) => {
 
     res.json({
       status: global.waStatus || "disconnected"
@@ -152,22 +131,35 @@ module.exports = (io) => {
 
   });
 
-  // GRUP LISTESI
-  router.get('/groups', async (req, res) => {
+  // GRUPLARI ÇEK (LIVE)
+  router.get("/groups", async (req, res) => {
 
     try {
 
-      if (!global.waClient || global.waStatus !== 'connected') {
+      if (!global.waClient || global.waStatus !== "connected") {
 
         return res.status(400).json({
-          error: "WhatsApp bagli degil"
+          error: "WhatsApp bağlı değil"
         });
 
       }
 
-      res.json(global.waGroups);
+      console.log("Gruplar çekiliyor...");
+
+      const chats = await global.waClient.getChats();
+
+      const groups = chats
+        .filter(chat => chat.isGroup)
+        .map(g => ({
+          id: g.id._serialized,
+          name: g.name || "Grup"
+        }));
+
+      res.json(groups);
 
     } catch (err) {
+
+      console.log("Grup çekme hatası:", err.message);
 
       res.status(500).json({
         error: err.message
@@ -177,15 +169,15 @@ module.exports = (io) => {
 
   });
 
-  // MESAJ GONDER
-  router.post('/send', async (req, res) => {
+  // MESAJ GÖNDER
+  router.post("/send", async (req, res) => {
 
     try {
 
-      if (!global.waClient || global.waStatus !== 'connected') {
+      if (!global.waClient || global.waStatus !== "connected") {
 
         return res.status(400).json({
-          error: "WhatsApp bagli degil"
+          error: "WhatsApp bağlı değil"
         });
 
       }
@@ -203,7 +195,7 @@ module.exports = (io) => {
       let sent = 0;
       let failed = 0;
 
-      io.emit('sending_start', {
+      io.emit("sending_start", {
         total: groupIds.length
       });
 
@@ -215,29 +207,26 @@ module.exports = (io) => {
 
           sent++;
 
-          io.emit('sending_progress', {
+          io.emit("sending_progress", {
             sent,
             failed,
             total: groupIds.length,
             current: i + 1
           });
 
-          // RANDOM DELAY
-          const delay = 4000 + Math.random() * 4000;
+          const delay = 5000 + Math.random() * 5000;
 
           await new Promise(r => setTimeout(r, delay));
 
-        } catch (e) {
+        } catch (err) {
 
           failed++;
-
-          console.log("Mesaj gonderme hatasi:", e.message);
 
         }
 
       }
 
-      io.emit('sending_done', {
+      io.emit("sending_done", {
         sent,
         failed,
         total: groupIds.length
@@ -259,8 +248,8 @@ module.exports = (io) => {
 
   });
 
-  // BAGLANTIYI KES
-  router.post('/disconnect', async (req, res) => {
+  // DISCONNECT
+  router.post("/disconnect", async (req, res) => {
 
     try {
 
@@ -270,13 +259,10 @@ module.exports = (io) => {
 
         global.waClient = null;
         global.waStatus = "disconnected";
-        global.waGroups = [];
 
       }
 
-      res.json({
-        success: true
-      });
+      res.json({ success: true });
 
     } catch (err) {
 

@@ -1,4 +1,3 @@
-routes/whatsapp.js tam hali:
 const express = require('express');
 const { Client, RemoteAuth } = require('whatsapp-web.js');
 const { MongoStore } = require('wwebjs-mongo');
@@ -51,19 +50,19 @@ module.exports = (io) => {
         global.waClient = client;
         global.waStatus = 'connected';
         global.waGroups = [];
-        io.emit('wa_status', { status: 'connected', message: 'WhatsApp bağlandı! ✅' });
-        console.log('WhatsApp bağlandı, gruplar yükleniyor...');
+        io.emit('wa_status', { status: 'connected', message: 'WhatsApp baglandi!' });
+        console.log('WhatsApp baglandi, gruplar yukleniyor...');
 
         setTimeout(async () => {
           try {
             const chats = await client.getChats();
             global.waGroups = chats
               .filter(c => c.isGroup)
-              .map(g => ({ id: g.id._serialized, name: g.name, participants: g.participants?.length || 0 }));
-            console.log('Gruplar yüklendi:', global.waGroups.length);
+              .map(g => ({ id: g.id._serialized, name: g.name, participants: g.participants ? g.participants.length : 0 }));
+            console.log('Gruplar yuklendi:', global.waGroups.length);
             io.emit('groups_loaded', global.waGroups);
           } catch(e) {
-            console.log('Grup yükleme hatası:', e.message);
+            console.log('Grup yukleme hatasi:', e.message);
           }
         }, 15000);
       });
@@ -77,14 +76,14 @@ module.exports = (io) => {
       client.on('disconnected', () => {
         global.waStatus = 'disconnected';
         global.waClient = null;
-        io.emit('wa_status', { status: 'disconnected', message: 'Bağlantı kesildi' });
+        io.emit('wa_status', { status: 'disconnected', message: 'Baglanti kesildi' });
       });
 
       client.initialize().catch(err => {
-        console.log('Initialize hatası:', err.message);
+        console.log('Initialize hatasi:', err.message);
         global.waStatus = 'disconnected';
         global.waClient = null;
-        io.emit('wa_status', { status: 'disconnected', message: 'Bağlantı başlatılamadı' });
+        io.emit('wa_status', { status: 'disconnected', message: 'Baglanti baslatılamadi' });
       });
 
       global.waStatus = 'connecting';
@@ -102,7 +101,7 @@ module.exports = (io) => {
   router.get('/groups', (req, res) => {
     try {
       if (!global.waClient || global.waStatus !== 'connected') {
-        return res.status(400).json({ error: 'WhatsApp bağlı değil' });
+        return res.status(400).json({ error: 'WhatsApp bagli degil' });
       }
       res.json(global.waGroups || []);
     } catch (err) {
@@ -113,7 +112,7 @@ module.exports = (io) => {
   router.post('/send', async (req, res) => {
     try {
       if (!global.waClient || global.waStatus !== 'connected') {
-        return res.status(400).json({ error: 'WhatsApp bağlı değil' });
+        return res.status(400).json({ error: 'WhatsApp bagli degil' });
       }
       const { message, groupIds } = req.body;
       if (!message || !groupIds || groupIds.length === 0) {
@@ -154,4 +153,3 @@ module.exports = (io) => {
 
   return router;
 };
-Commit et, sonra Dockerfile'ı göndereyim. 👆

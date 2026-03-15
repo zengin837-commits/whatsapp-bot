@@ -26,7 +26,7 @@ module.exports = (io) => {
             '--disable-dev-shm-usage'
           ],
           headless: true,
-          protocolTimeout: 800000
+          protocolTimeout: 1200000
         }
       });
 
@@ -47,26 +47,24 @@ module.exports = (io) => {
         const loadGroups = async (attempt) => {
           try {
             console.log('Gruplar yukleniyor... (deneme ' + attempt + ')');
-            await new Promise(r => setTimeout(r, 5000));
-            const chats = await client.getChats();
-            global.waGroups = chats
-              .filter(c => c.isGroup)
-              .map(g => ({ 
-                id: g.id._serialized, 
-                name: g.name, 
-                participants: g.participants ? g.participants.length : 0 
-              }));
+            const contacts = await client.getContacts();
+            const groups = contacts.filter(c => c.isGroup);
+            global.waGroups = groups.map(g => ({
+              id: g.id._serialized,
+              name: g.name || g.pushname || 'Grup',
+              participants: 0
+            }));
             console.log('Gruplar yuklendi:', global.waGroups.length);
             io.emit('groups_loaded', global.waGroups);
           } catch(e) {
             console.log('Grup yukleme hatasi:', e.message);
-            if (attempt < 30) {
-              setTimeout(() => loadGroups(attempt + 1), 60000);
+            if (attempt < 5) {
+              setTimeout(() => loadGroups(attempt + 1), 30000);
             }
           }
         };
 
-        setTimeout(() => loadGroups(1), 30000);
+        setTimeout(() => loadGroups(1), 15000);
       });
 
       client.on('auth_failure', () => {

@@ -1,7 +1,5 @@
 const express = require('express');
-const { Client, RemoteAuth } = require('whatsapp-web.js');
-const { MongoStore } = require('wwebjs-mongo');
-const mongoose = require('mongoose');
+const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 
 module.exports = (io) => {
@@ -18,10 +16,7 @@ module.exports = (io) => {
       }
 
       const client = new Client({
-        authStrategy: new RemoteAuth({
-          store: new MongoStore({ mongoose }),
-          backupSyncIntervalMs: 300000
-        }),
+        authStrategy: new LocalAuth(),
         puppeteer: {
           executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
           args: [

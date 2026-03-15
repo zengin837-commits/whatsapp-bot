@@ -23,12 +23,15 @@ module.exports = (io) => {
           backupSyncIntervalMs: 300000
         }),
         puppeteer: {
-          executablePath: '/usr/bin/chromium',
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
           args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-gpu',
-            '--disable-dev-shm-usage'
+            '--disable-dev-shm-usage',
+            '--disable-extensions',
+            '--single-process',
+            '--no-zygote'
           ],
           headless: true,
           protocolTimeout: 800000
@@ -36,6 +39,7 @@ module.exports = (io) => {
       });
 
       client.on('qr', async (qr) => {
+        console.log('QR kod olusturuldu!');
         const qrImage = await qrcode.toDataURL(qr);
         global.waStatus = 'qr';
         io.emit('qr', qrImage);
@@ -60,7 +64,6 @@ module.exports = (io) => {
           } catch(e) {
             console.log('Grup yukleme hatasi:', e.message);
             if (attempt < 5) {
-              console.log('30 saniye sonra tekrar denenecek...');
               setTimeout(() => loadGroups(attempt + 1), 30000);
             }
           }

@@ -28,11 +28,7 @@ module.exports = (io) => {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-gpu',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-extensions'
+            '--disable-dev-shm-usage'
           ],
           headless: true,
           protocolTimeout: 800000

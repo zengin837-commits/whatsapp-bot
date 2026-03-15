@@ -32,7 +32,6 @@ module.exports = (io) => {
             '--disable-accelerated-2d-canvas',
             '--no-first-run',
             '--no-zygote',
-            '--single-process',
             '--disable-extensions'
           ],
           headless: true,

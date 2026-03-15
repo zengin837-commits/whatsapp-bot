@@ -23,10 +23,7 @@ module.exports = (io) => {
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-gpu',
-            '--disable-dev-shm-usage',
-            '--disable-extensions',
-            '--single-process',
-            '--no-zygote'
+            '--disable-dev-shm-usage'
           ],
           headless: true,
           protocolTimeout: 800000
@@ -63,7 +60,7 @@ module.exports = (io) => {
             io.emit('groups_loaded', global.waGroups);
           } catch(e) {
             console.log('Grup yukleme hatasi:', e.message);
-            if (attempt < 5) {
+            if (attempt < 30) {
               setTimeout(() => loadGroups(attempt + 1), 60000);
             }
           }

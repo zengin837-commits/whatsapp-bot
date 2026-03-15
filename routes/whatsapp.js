@@ -65,8 +65,9 @@ module.exports = (io) => {
       io.emit('wa_status', { status: 'connected', message: 'WhatsApp baglandi!' });
       console.log('WhatsApp baglandi');
 
-      setTimeout(async () => {
+      const loadGroups = async (attempt = 1) => {
         try {
+          console.log(`Gruplar yukleniyor... (deneme ${attempt})`);
           const chats = await client.getChats();
           global.waGroups = chats
             .filter(c => c.isGroup)
@@ -75,8 +76,16 @@ module.exports = (io) => {
           io.emit('groups_loaded', global.waGroups);
         } catch(e) {
           console.log('Grup yukleme hatasi:', e.message);
+          if (attempt < 3) {
+            console.log('30 saniye sonra tekrar denenecek...');
+            setTimeout(() => loadGroups(attempt + 1), 30000);
+          } else {
+            io.emit('wa_status', { status: 'connected', message: 'Gruplar yuklenemedi, sayfayi yenileyin' });
+          }
         }
-      }, 15000);
+      };
+
+      setTimeout(() => loadGroups(), 20000);
     });
 
     client.on('auth_failure', () => {
